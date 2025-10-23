@@ -73,11 +73,11 @@
       border-radius: 999px;
     }
     #menus {
-      position: absolute;
+      position: fixed;
       top: 0;
       left: 0;
-      width: 100%;
-      height: 100%;
+      width: 100vw;
+      height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -394,7 +394,7 @@
       {
         id: 'neige',
         name: 'Chèvre des Neiges',
-        emoji: '❄️🐐',
+        emoji: '❄️',
         stats: { hp: 100, speed: 120, xpGain: 1 },
         passive: 'gèle les ennemis proches 0,5 s / 10 s',
         description: 'Contrôle : ralentit mais gèle périodiquement les ennemis.'
@@ -410,7 +410,7 @@
       {
         id: 'elec',
         name: 'Chèvre Électrique',
-        emoji: '⚡🐐',
+        emoji: '⚡',
         stats: { hp: 90, speed: 180, xpGain: 1 },
         passive: 'choc électrique à chaque pickup d\'XP',
         description: 'Agile : vitesse ++, choc sur XP.'
@@ -671,14 +671,14 @@
       { start: 360, end: 420, spawn: { bat: 0.8, rat: 1.8, crow: 2, scarecrow: 4 } },
     ],
     biomes: [
-      { id: 'alpage', name: 'Alpage Crépusculaire', color: '#1c3424', hazard: 'vent', bgEmoji: ['🌲', '🌿', '🪵'], audio: 'pad' },
-      { id: 'cimetiere', name: 'Cimetière Roman', color: '#2c3038', hazard: 'cloche', bgEmoji: ['🪦', '⚰️', '🌙'], audio: 'bells' },
+      { id: 'alpage', name: 'Alpage Crépusculaire', color: '#1c3424', hazard: 'vent', bgEmoji: ['🌲', '🌿', '🪵', '🍄', '🪨', '🌼', '🍃'], accents: ['#2e5c3a', '#4fa863', '#9fe8b0'], audio: 'pad' },
+      { id: 'cimetiere', name: 'Cimetière Roman', color: '#2c3038', hazard: 'cloche', bgEmoji: ['🪦', '⚰️', '🌙', '🕯️', '🪻', '🦉', '🪨'], accents: ['#2f3140', '#4c4f6a', '#9a8bc7'], audio: 'bells' },
     ],
     sprites: {
       hero_alpine: ['🐐', '🐐'],
-      hero_neige: ['❄️🐐', '🐐'],
+      hero_neige: ['❄️', '❄️'],
       hero_bouc: ['🐏', '🐏'],
-      hero_elec: ['⚡🐐', '🐐'],
+      hero_elec: ['⚡', '⚡'],
       mob_bat: ['🦇'],
       mob_rat: ['🐀'],
       mob_crow: ['🐦'],
@@ -1142,6 +1142,8 @@
       this.buffMultiplier = 0;
       this.clocheWarned = false;
       this.clocheTimer = 0;
+      this.backgroundLayers = [];
+      this.backgroundDetails = [];
     }
     reset() {
       this.entities = new EntityManager();
@@ -1174,6 +1176,8 @@
       this.buffMultiplier = 0;
       this.clocheWarned = false;
       this.clocheTimer = 0;
+      this.backgroundLayers = [];
+      this.backgroundDetails = [];
       this.selectBiome();
       this.createPlayer(selectedHero);
       this.grantInitialPower();
@@ -1214,6 +1218,44 @@
     selectBiome() {
       this.biome = DATA.biomes[this.lastBiomeIndex % DATA.biomes.length];
       this.lastBiomeIndex++;
+      this.generateBackground();
+    }
+    generateBackground() {
+      if (!this.biome) return;
+      const seed = (this.rngSeed || Date.now()) + this.lastBiomeIndex * 7919;
+      const rng = new RNG(seed);
+      this.backgroundLayers = [];
+      this.backgroundDetails = [];
+      const area = canvas.width * canvas.height;
+      const glyphCount = Math.max(60, Math.floor(area / 15000));
+      for (let i = 0; i < glyphCount; i++) {
+        this.backgroundLayers.push({
+          emoji: rng.pick(this.biome.bgEmoji),
+          x: rng.range(0, canvas.width),
+          y: rng.range(0, canvas.height),
+          size: rng.range(28, 60),
+          alpha: rng.range(0.05, 0.14),
+          rotation: rng.range(0, Math.PI * 2),
+        });
+      }
+      const accentPalette = this.biome.accents || ['#233'];
+      const detailCount = Math.max(24, Math.floor(glyphCount / 2.5));
+      for (let i = 0; i < detailCount; i++) {
+        this.backgroundDetails.push({
+          x: rng.range(-40, canvas.width + 40),
+          y: rng.range(-40, canvas.height + 40),
+          w: rng.range(40, 160),
+          h: rng.range(30, 120),
+          rotation: rng.range(0, Math.PI * 2),
+          color: accentPalette[i % accentPalette.length],
+          alpha: rng.range(0.03, 0.09),
+          type: rng.nextFloat() > 0.4 ? 'ellipse' : 'diamond',
+        });
+      }
+    }
+    getDifficulty() {
+      const progress = clamp(this.elapsed / 420, 0, 1);
+      return 1 + progress * 0.85;
     }
     addPower(id) {
       const power = DATA.powers.find(p => p.id === id);
@@ -1313,6 +1355,10 @@
       menus.start.classList.add('visible');
     }
     spawnEnemy(type) {
+      const diff = this.getDifficulty();
+      const hpScale = 1 + (diff - 1) * 0.9;
+      const speedScale = 1 + (diff - 1) * 0.6;
+      const damageScale = 1 + (diff - 1) * 0.7;
       const enemy = this.entities.create({
         type: 'enemy',
         enemyType: type.id,
@@ -1321,11 +1367,11 @@
         y: this.rng.range(40, canvas.height - 40),
         vx: 0,
         vy: 0,
-        speed: type.speed,
-        hp: type.hp,
-        maxHp: type.hp,
+        speed: type.speed * speedScale,
+        hp: type.hp * hpScale,
+        maxHp: type.hp * hpScale,
         radius: 16,
-        damage: type.damage,
+        damage: type.damage * damageScale,
         xp: type.xp,
         ability: type.ability || null,
         cooldown: 0,
@@ -1338,17 +1384,20 @@
     spawnBoss(boss) {
       if (this.bossesSpawned.has(boss.id)) return;
       this.bossesSpawned.add(boss.id);
+      const diff = this.getDifficulty();
+      const hpScale = 1 + (diff - 1) * 0.8;
+      const damageScale = 1 + (diff - 1) * 0.6;
       this.entities.create({
         type: 'boss',
         enemyType: boss.id,
         emoji: boss.emoji,
         x: this.rng.range(120, canvas.width - 120),
         y: this.rng.range(100, canvas.height - 100),
-        speed: boss.speed,
-        hp: boss.hp,
-        maxHp: boss.hp,
+        speed: boss.speed * (1 + (diff - 1) * 0.4),
+        hp: boss.hp * hpScale,
+        maxHp: boss.hp * hpScale,
         radius: 36,
-        damage: boss.damage,
+        damage: boss.damage * damageScale,
         xp: boss.xp,
         ability: boss.id,
         cooldown: 0,
@@ -1386,7 +1435,15 @@
       proj.maxBounces = 0;
       proj.onUpdate = null;
       proj.owner = 'player';
+      proj.render = null;
+      proj.trail = [];
+      proj.trailLimit = 0;
+      proj.spin = 0;
+      proj.angle = 0;
+      proj.trailTimer = 0;
       Object.assign(proj, params);
+      if (!proj.trail) proj.trail = [];
+      if (!proj.trailLimit) proj.trailLimit = 0;
       this.projectiles.push(proj);
       return proj;
     }
@@ -1398,8 +1455,23 @@
         if (p.onUpdate) p.onUpdate(p, dt);
         p.x += p.vx * dt;
         p.y += p.vy * dt;
+        if (p.spin) p.angle = (p.angle || 0) + p.spin * dt;
+        if (p.trailLimit && p.trail) {
+          p.trailTimer += dt;
+          if (p.trailTimer >= 0.02) {
+            p.trailTimer = 0;
+            p.trail.unshift({ x: p.x, y: p.y, life: 0 });
+            if (p.trail.length > p.trailLimit) p.trail.pop();
+          }
+          for (let t = p.trail.length - 1; t >= 0; t--) {
+            p.trail[t].life += dt;
+            if (p.trail[t].life > 0.5) p.trail.splice(t, 1);
+          }
+        }
         if (p.x < -120 || p.x > canvas.width + 120 || p.y < -120 || p.y > canvas.height + 120 || p.elapsed > p.life) {
           p.active = false;
+          if (p.trail) p.trail.length = 0;
+          p.render = null;
           projectilePool.release(p);
           this.projectiles.splice(i, 1);
         }
@@ -1824,35 +1896,75 @@
       const dirX = this.player.dirX || 1;
       const dirY = this.player.dirY;
       const angle = Math.atan2(dirY, dirX);
+      const hue = this.rng.range(18, 42);
       this.spawnProjectile({
         x: this.player.x,
         y: this.player.y,
         vx: Math.cos(angle) * 260,
         vy: Math.sin(angle) * 260 - 160,
-        radius: 14,
+        radius: 16,
         damage: stats.damage,
         life: 2.5,
-        emoji: '🔥',
         owner: 'player',
         bounces: 0,
         maxBounces: stats.bounces,
+        trailLimit: 14,
+        hue,
+        render: (ctx, proj) => {
+          ctx.save();
+          if (proj.trail && proj.trail.length) {
+            proj.trail.forEach((node, idx) => {
+              const alpha = Math.max(0, 0.45 - node.life * 0.7);
+              if (alpha <= 0) return;
+              ctx.globalAlpha = alpha;
+              ctx.fillStyle = `hsla(${proj.hue + idx * 4}, 88%, 62%, ${alpha})`;
+              ctx.beginPath();
+              ctx.arc(node.x, node.y, Math.max(3, proj.radius * 0.35 + (proj.trailLimit - idx) * 0.15), 0, Math.PI * 2);
+              ctx.fill();
+            });
+          }
+          ctx.globalAlpha = 1;
+          const grad = ctx.createRadialGradient(proj.x, proj.y, 0, proj.x, proj.y, proj.radius * 1.2);
+          grad.addColorStop(0, 'rgba(255,245,210,0.95)');
+          grad.addColorStop(0.5, `hsla(${proj.hue}, 95%, 62%, 0.9)`);
+          grad.addColorStop(1, `hsla(${proj.hue - 20}, 90%, 38%, 0.75)`);
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        },
         onUpdate: (p, dt) => {
           p.vy += 260 * dt;
           if (p.y > canvas.height - 20 && p.bounces < p.maxBounces) {
             p.vy *= -0.6;
             p.bounces++;
             if (state.evolution) {
+              const scorchHue = (p.hue || hue) - 10;
               this.spawnProjectile({
                 x: p.x,
                 y: canvas.height - 24,
                 vx: 0,
                 vy: 0,
-                radius: 60,
-                damage: stats.damage * 0.3,
-                life: 2,
-                emoji: '🔥',
+                radius: 64,
+                damage: stats.damage * 0.35,
+                life: 2.1,
                 owner: 'player',
-                onUpdate: () => {}
+                trailLimit: 0,
+                render: (ctx, proj) => {
+                  ctx.save();
+                  const grad = ctx.createRadialGradient(proj.x, proj.y, 8, proj.x, proj.y, proj.radius);
+                  grad.addColorStop(0, `hsla(${scorchHue}, 90%, 70%, 0.8)`);
+                  grad.addColorStop(1, 'rgba(80,25,5,0)');
+                  ctx.fillStyle = grad;
+                  ctx.beginPath();
+                  ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+                  ctx.fill();
+                  ctx.restore();
+                },
+                onUpdate: (proj, dt2) => {
+                  proj.radius = Math.max(48, proj.radius - dt2 * 6);
+                }
               });
             }
           }
@@ -1863,17 +1975,53 @@
       state.cooldown = stats.cooldown;
       const angle = Math.atan2(this.player.dirY, this.player.dirX || 0.0001);
       const speed = 260;
+      const hue = this.rng.range(180, 260);
+      const boomerangRenderer = (ctx, proj) => {
+        if (proj.trail && proj.trail.length) {
+          proj.trail.forEach((node, idx) => {
+            const alpha = Math.max(0, 0.25 - idx * 0.02);
+            if (alpha <= 0) return;
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.strokeStyle = `hsla(${proj.color}, 100%, 70%, ${alpha})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, 10 + idx * 0.6, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+          });
+        }
+        ctx.save();
+        ctx.translate(proj.x, proj.y);
+        ctx.rotate(proj.angle || 0);
+        const grad = ctx.createLinearGradient(-proj.radius, 0, proj.radius, 0);
+        grad.addColorStop(0, `hsla(${proj.color - 20}, 80%, 45%, 0.4)`);
+        grad.addColorStop(0.5, `hsla(${proj.color}, 95%, 65%, 0.95)`);
+        grad.addColorStop(1, `hsla(${proj.color + 20}, 80%, 45%, 0.4)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(-proj.radius, -6);
+        ctx.quadraticCurveTo(0, -proj.radius * 0.6, proj.radius, -6);
+        ctx.lineTo(proj.radius, 6);
+        ctx.quadraticCurveTo(0, proj.radius * 0.6, -proj.radius, 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      };
       const boomerang = this.spawnProjectile({
         x: this.player.x,
         y: this.player.y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        radius: 16,
+        radius: 18,
         damage: stats.damage,
         life: 1.2,
-        emoji: '🌀',
         owner: 'player',
         pierce: stats.pierce,
+        trailLimit: 12,
+        spin: 8,
+        color: hue,
+        render: boomerangRenderer,
         onUpdate: (p, dt) => {
           const toPlayerX = this.player.x - p.x;
           const toPlayerY = this.player.y - p.y;
@@ -1887,12 +2035,15 @@
           y: this.player.y,
           vx: Math.cos(angle + Math.PI / 4) * speed,
           vy: Math.sin(angle + Math.PI / 4) * speed,
-          radius: 16,
+          radius: 18,
           damage: stats.damage * 2,
           life: 1.2,
-          emoji: '🌀',
           owner: 'player',
           pierce: stats.pierce + 1,
+          trailLimit: 12,
+          spin: -9,
+          color: hue + 20,
+          render: boomerangRenderer,
           onUpdate: boomerang.onUpdate,
         });
       }
@@ -1900,8 +2051,10 @@
     castRings(stats, state) {
       state.cooldown = stats.cooldown;
       const count = stats.count;
+      const baseHue = this.rng.range(40, 120);
       for (let i = 0; i < count; i++) {
         const angle = (Math.PI * 2 * i) / count;
+        const hue = baseHue + i * 25;
         this.spawnProjectile({
           x: this.player.x + Math.cos(angle) * stats.radius,
           y: this.player.y + Math.sin(angle) * stats.radius,
@@ -1910,13 +2063,33 @@
           radius: 14,
           damage: 0,
           life: stats.cooldown,
-          emoji: '💍',
           owner: 'player',
+          orbitRadius: stats.radius,
+          phase: angle,
+          hue,
+          wave: this.rng.range(0.8, 1.4),
+          render: (ctx, proj) => {
+            ctx.save();
+            ctx.globalAlpha = 0.85;
+            ctx.strokeStyle = `hsla(${proj.hue}, 90%, 72%, 0.9)`;
+            ctx.lineWidth = 3;
+            ctx.shadowColor = `hsla(${proj.hue}, 90%, 75%, 0.6)`;
+            ctx.shadowBlur = 12;
+            ctx.beginPath();
+            ctx.arc(proj.x, proj.y, 12, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 0.6;
+            ctx.fillStyle = `hsla(${proj.hue}, 95%, 75%, 0.35)`;
+            ctx.beginPath();
+            ctx.arc(proj.x, proj.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          },
           onUpdate: (p) => {
-            const t = performance.now() / 1000 + i;
-            const radius = stats.radius;
-            p.x = this.player.x + Math.cos(t + angle) * radius;
-            p.y = this.player.y + Math.sin(t + angle) * radius;
+            const t = (this.elapsed * p.wave) + p.phase;
+            const radius = p.orbitRadius;
+            p.x = this.player.x + Math.cos(t) * radius;
+            p.y = this.player.y + Math.sin(t) * radius;
           }
         });
       }
@@ -1927,18 +2100,46 @@
     castWhip(stats, state) {
       state.cooldown = stats.cooldown;
       const directions = state.evolution ? [-1, 1] : [1];
+      const sweep = state.evolution ? Math.PI / 2.4 : Math.PI / 3.1;
       directions.forEach(dir => {
         this.spawnProjectile({
-          x: this.player.x + dir * 40,
+          x: this.player.x,
           y: this.player.y,
           vx: 0,
           vy: 0,
-          radius: 70,
+          radius: 72,
           damage: stats.damage,
-          life: 0.2,
-          emoji: '🦇',
+          life: 0.22,
           owner: 'player',
-          onUpdate: () => {}
+          whipDir: dir,
+          sweep,
+          render: (ctx, proj, game) => {
+            const baseAngle = Math.atan2(game.player.dirY, game.player.dirX || 0.0001);
+            ctx.save();
+            ctx.translate(game.player.x, game.player.y);
+            ctx.rotate(baseAngle + (proj.whipDir === 1 ? 0 : Math.PI));
+            ctx.globalAlpha = 0.85;
+            ctx.strokeStyle = 'rgba(255,220,170,0.9)';
+            ctx.lineWidth = 8;
+            ctx.shadowColor = 'rgba(255,180,120,0.7)';
+            ctx.shadowBlur = 16;
+            ctx.beginPath();
+            ctx.arc(0, 0, 70, -proj.sweep, proj.sweep);
+            ctx.stroke();
+            if (state.evolution) {
+              ctx.globalAlpha = 0.55;
+              ctx.lineWidth = 4;
+              ctx.strokeStyle = 'rgba(240,120,160,0.8)';
+              ctx.beginPath();
+              ctx.arc(0, 0, 58, -proj.sweep, proj.sweep);
+              ctx.stroke();
+            }
+            ctx.restore();
+          },
+          onUpdate: (p) => {
+            p.x = this.player.x;
+            p.y = this.player.y;
+          }
         });
       });
     }
@@ -1955,8 +2156,47 @@
           radius: 18,
           damage: stats.damage,
           life: 2.6,
-          emoji: '🚀',
           owner: 'player',
+          trailLimit: 10,
+          render: (ctx, proj) => {
+            if (proj.trail && proj.trail.length) {
+              proj.trail.forEach((node, idx) => {
+                const alpha = Math.max(0, 0.3 - idx * 0.03);
+                if (alpha <= 0) return;
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = `rgba(255,150,80,${alpha})`;
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, 6 + idx * 0.4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+              });
+            }
+            ctx.save();
+            const ang = Math.atan2(proj.vy, proj.vx);
+            ctx.translate(proj.x, proj.y);
+            ctx.rotate(ang);
+            const body = ctx.createLinearGradient(-proj.radius, 0, proj.radius, 0);
+            body.addColorStop(0, '#1e2d55');
+            body.addColorStop(1, '#6fd3ff');
+            ctx.fillStyle = body;
+            ctx.beginPath();
+            ctx.moveTo(-proj.radius, -6);
+            ctx.lineTo(proj.radius * 0.6, -6);
+            ctx.lineTo(proj.radius, 0);
+            ctx.lineTo(proj.radius * 0.6, 6);
+            ctx.lineTo(-proj.radius, 6);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = 'rgba(255,200,120,0.9)';
+            ctx.beginPath();
+            ctx.moveTo(-proj.radius, -6);
+            ctx.lineTo(-proj.radius - 10, 0);
+            ctx.lineTo(-proj.radius, 6);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          },
           onUpdate: (p, dt) => {
             const dx = target.x - p.x;
             const dy = target.y - p.y;
@@ -1973,11 +2213,25 @@
             y: target.y,
             vx: 0,
             vy: 0,
-            radius: 60,
+            radius: 70,
             damage: stats.damage,
-            life: 0.5,
-            emoji: '💥',
-            owner: 'player'
+            life: 0.6,
+            owner: 'player',
+            render: (ctx, proj) => {
+              ctx.save();
+              const grad = ctx.createRadialGradient(proj.x, proj.y, 0, proj.x, proj.y, proj.radius);
+              grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+              grad.addColorStop(0.4, 'rgba(120,200,255,0.6)');
+              grad.addColorStop(1, 'rgba(40,70,140,0)');
+              ctx.fillStyle = grad;
+              ctx.beginPath();
+              ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+            },
+            onUpdate: (proj, dt) => {
+              proj.radius += 60 * dt;
+            }
           });
         });
       }
@@ -1986,15 +2240,36 @@
       state.cooldown = stats.cooldown;
       const angle = Math.atan2(this.player.dirY, this.player.dirX || 0.0001);
       this.spawnProjectile({
-        x: this.player.x + Math.cos(angle) * 40,
-        y: this.player.y + Math.sin(angle) * 40,
+        x: this.player.x,
+        y: this.player.y,
         vx: 0,
         vy: 0,
-        radius: 80,
+        radius: 100,
         damage: stats.damage,
-        life: 0.25,
-        emoji: '⚔️',
-        owner: 'player'
+        life: 0.24,
+        owner: 'player',
+        arc: stats.arc || (Math.PI / 2.8),
+        render: (ctx, proj, game) => {
+          const base = Math.atan2(game.player.dirY, game.player.dirX || 0.0001);
+          ctx.save();
+          ctx.translate(game.player.x, game.player.y);
+          ctx.rotate(base);
+          const grad = ctx.createLinearGradient(0, 0, 160, 0);
+          grad.addColorStop(0, 'rgba(30,70,160,0)');
+          grad.addColorStop(0.4, 'rgba(120,200,255,0.55)');
+          grad.addColorStop(1, 'rgba(220,255,255,0.95)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.arc(0, 0, 120, -proj.arc / 2, proj.arc / 2);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        },
+        onUpdate: (proj) => {
+          proj.x = this.player.x;
+          proj.y = this.player.y;
+        }
       });
       if (state.evolution) {
         this.spawnProjectile({
@@ -2002,13 +2277,31 @@
           y: this.player.y,
           vx: 0,
           vy: 0,
-          radius: 120,
-          damage: stats.damage,
-          life: 0.3,
-          emoji: '⚔️',
+          radius: 130,
+          damage: stats.damage * 0.65,
+          life: 0.6,
           owner: 'player',
-          onUpdate: (p, dt) => {
-            p.life += dt * 0.5;
+          spin: 5,
+          render: (ctx, proj, game) => {
+            ctx.save();
+            ctx.translate(game.player.x, game.player.y);
+            ctx.rotate(proj.angle || 0);
+            ctx.strokeStyle = 'rgba(140,220,255,0.75)';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.arc(0, 0, 105, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 0.55;
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = 'rgba(210,255,255,0.7)';
+            ctx.beginPath();
+            ctx.arc(0, 0, 75, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+          },
+          onUpdate: (proj) => {
+            proj.x = this.player.x;
+            proj.y = this.player.y;
           }
         });
       }
@@ -2016,16 +2309,46 @@
     castHadouken(stats, state) {
       state.cooldown = stats.cooldown;
       const angle = Math.atan2(this.player.dirY, this.player.dirX || 0.0001);
+      const hue = this.rng.range(180, 220);
       this.spawnProjectile({
         x: this.player.x,
         y: this.player.y,
         vx: Math.cos(angle) * stats.speed,
         vy: Math.sin(angle) * stats.speed,
-        radius: 16,
+        radius: 18,
         damage: stats.damage,
         life: 2,
-        emoji: '🔵',
-        owner: 'player'
+        owner: 'player',
+        trailLimit: 10,
+        hue,
+        render: (ctx, proj) => {
+          if (proj.trail && proj.trail.length) {
+            proj.trail.forEach((node, idx) => {
+              const alpha = Math.max(0, 0.35 - idx * 0.03);
+              if (alpha <= 0) return;
+              ctx.save();
+              ctx.globalAlpha = alpha;
+              ctx.fillStyle = `hsla(${proj.hue}, 80%, 65%, ${alpha})`;
+              ctx.beginPath();
+              ctx.arc(node.x, node.y, 6 + idx * 0.3, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+            });
+          }
+          ctx.save();
+          const ang = Math.atan2(proj.vy, proj.vx);
+          ctx.translate(proj.x, proj.y);
+          ctx.rotate(ang);
+          const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, proj.radius);
+          grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+          grad.addColorStop(0.5, `hsla(${proj.hue}, 90%, 70%, 0.85)`);
+          grad.addColorStop(1, 'rgba(30,40,120,0.4)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, proj.radius * 1.2, proj.radius * 0.8, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
       });
       if (state.evolution) {
         this.spawnProjectile({
@@ -2033,11 +2356,29 @@
           y: this.player.y,
           vx: Math.cos(angle) * (stats.speed * 0.5),
           vy: Math.sin(angle) * (stats.speed * 0.5),
-          radius: 50,
-          damage: stats.damage * 0.4,
+          radius: 60,
+          damage: stats.damage * 0.45,
           life: 2,
-          emoji: '🔷',
-          owner: 'player'
+          owner: 'player',
+          render: (ctx, proj) => {
+            ctx.save();
+            const ang = Math.atan2(proj.vy, proj.vx);
+            ctx.translate(proj.x, proj.y);
+            ctx.rotate(ang);
+            const grad = ctx.createLinearGradient(-proj.radius, 0, proj.radius, 0);
+            grad.addColorStop(0, 'rgba(20,40,120,0)');
+            grad.addColorStop(0.4, `hsla(${hue}, 90%, 70%, 0.7)`);
+            grad.addColorStop(1, 'rgba(240,255,255,0.9)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(-proj.radius, -20);
+            ctx.lineTo(proj.radius, -14);
+            ctx.lineTo(proj.radius, 14);
+            ctx.lineTo(-proj.radius, 20);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          }
         });
       }
     }
@@ -2052,10 +2393,27 @@
         radius: stats.radius,
         damage: stats.damage,
         life: 3,
-        emoji: '💣',
         owner: 'player',
+        render: (ctx, proj) => {
+          ctx.save();
+          const grad = ctx.createRadialGradient(proj.x, proj.y, proj.radius * 0.3, proj.x, proj.y, proj.radius * 1.2);
+          grad.addColorStop(0, 'rgba(255,255,255,0.9)');
+          grad.addColorStop(0.5, 'rgba(100,255,200,0.7)');
+          grad.addColorStop(1, 'rgba(10,40,30,0.2)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 0.4;
+          ctx.strokeStyle = 'rgba(120,255,220,0.6)';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(proj.x, proj.y, proj.radius * 1.2, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        },
         onUpdate: (p) => {
-          p.radius *= 0.99;
+          p.radius *= 0.995;
         }
       });
       if (state.evolution) {
@@ -2069,8 +2427,18 @@
             radius: stats.radius * 0.5,
             damage: stats.damage * 0.4,
             life: 2,
-            emoji: '✨',
-            owner: 'player'
+            owner: 'player',
+            render: (ctx, proj) => {
+              ctx.save();
+              const grad = ctx.createRadialGradient(proj.x, proj.y, 0, proj.x, proj.y, proj.radius);
+              grad.addColorStop(0, 'rgba(255,255,255,0.8)');
+              grad.addColorStop(1, 'rgba(80,220,255,0.3)');
+              ctx.fillStyle = grad;
+              ctx.beginPath();
+              ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.restore();
+            }
           });
         }
       }
@@ -2078,8 +2446,18 @@
     castTetris(stats, state) {
       state.cooldown = stats.cooldown;
       const count = state.evolution ? stats.blocks * 2 : stats.blocks;
+      const shapes = [
+        [[1, 1, 1, 1]],
+        [[1, 1], [1, 1]],
+        [[0, 1, 0], [1, 1, 1]],
+        [[1, 0], [1, 0], [1, 1]],
+        [[0, 1], [0, 1], [1, 1]],
+      ];
+      const palette = state.evolution ? ['#6ac2ff', '#9a8bff', '#ffc76a'] : ['#58ffb9', '#6aa9ff', '#ff8ba7'];
       for (let i = 0; i < count; i++) {
         const x = this.rng.range(40, canvas.width - 40);
+        const shape = this.rng.pick(shapes);
+        const color = this.rng.pick(palette);
         this.spawnProjectile({
           x,
           y: -20,
@@ -2088,8 +2466,28 @@
           radius: 26,
           damage: 20,
           life: 3,
-          emoji: '🔷',
-          owner: 'player'
+          owner: 'player',
+          shape,
+          blockColor: color,
+          render: (ctx, proj) => {
+            const size = 18;
+            ctx.save();
+            ctx.translate(proj.x, proj.y);
+            ctx.globalAlpha = 0.9;
+            for (let row = 0; row < proj.shape.length; row++) {
+              for (let col = 0; col < proj.shape[row].length; col++) {
+                if (!proj.shape[row][col]) continue;
+                const px = (col - proj.shape[row].length / 2) * size;
+                const py = (row - proj.shape.length / 2) * size;
+                const grad = ctx.createLinearGradient(px, py, px + size, py + size);
+                grad.addColorStop(0, `${proj.blockColor}e0`);
+                grad.addColorStop(1, `${proj.blockColor}ff`);
+                ctx.fillStyle = grad;
+                ctx.fillRect(px, py, size - 2, size - 2);
+              }
+            }
+            ctx.restore();
+          }
         });
       }
     }
@@ -2103,11 +2501,23 @@
         radius: stats.radius,
         damage: stats.damage,
         life: 0.3,
-        emoji: '😋',
         owner: 'player',
+        render: (ctx, proj) => {
+          ctx.save();
+          const grad = ctx.createRadialGradient(proj.x, proj.y, proj.radius * 0.2, proj.x, proj.y, proj.radius);
+          grad.addColorStop(0, 'rgba(255,255,255,0.4)');
+          grad.addColorStop(0.6, 'rgba(255,230,120,0.3)');
+          grad.addColorStop(1, 'rgba(255,140,0,0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        },
         onUpdate: (p) => {
           p.x = this.player.x;
           p.y = this.player.y;
+          p.radius = stats.radius;
         }
       });
       if (state.evolution) {
@@ -2117,11 +2527,37 @@
     castBattleCry(stats, state) {
       state.cooldown = stats.cooldown;
       this.applyBattleCry(state.level);
+      this.spawnProjectile({
+        x: this.player.x,
+        y: this.player.y,
+        vx: 0,
+        vy: 0,
+        radius: 20,
+        damage: 0,
+        life: 0.6,
+        owner: 'fx',
+        render: (ctx, proj) => {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, 0.6 - proj.elapsed * 0.8);
+          ctx.strokeStyle = 'rgba(255,200,90,0.8)';
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.arc(proj.x, proj.y, proj.radius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        },
+        onUpdate: (proj, dt) => {
+          proj.x = this.player.x;
+          proj.y = this.player.y;
+          proj.radius += 220 * dt;
+        }
+      });
     }
     handleProjectiles(dt) {
       for (let i = this.projectiles.length - 1; i >= 0; i--) {
         const proj = this.projectiles[i];
         if (!proj.active) continue;
+        if (proj.owner === 'fx') continue;
         if (proj.owner === 'player') {
           for (const enemy of this.entities.entities) {
             if (enemy.type !== 'enemy' && enemy.type !== 'boss') continue;
@@ -2156,16 +2592,18 @@
         this.biomeTimer = 0;
       }
       const wave = getWaveConfig(this.elapsed);
+      const spawnBoost = 1 + (this.getDifficulty() - 1) * 0.6;
       for (const [typeId, interval] of Object.entries(wave.spawn)) {
-        this.spawnTimers[typeId] = (this.spawnTimers[typeId] || interval);
+        const scaledInterval = interval / spawnBoost;
+        this.spawnTimers[typeId] = this.spawnTimers[typeId] !== undefined ? this.spawnTimers[typeId] : scaledInterval;
         this.spawnTimers[typeId] -= dt;
         if (this.spawnTimers[typeId] <= 0) {
           const type = DATA.enemies.common.find(e => e.id === typeId) || DATA.enemies.elite.find(e => e.id === typeId);
           if (type) this.spawnEnemy(type);
-          this.spawnTimers[typeId] = interval;
+          this.spawnTimers[typeId] += scaledInterval;
         }
       }
-      const eliteChance = 0.001 + this.elapsed / 6000;
+      const eliteChance = (0.001 + this.elapsed / 6000) * (0.8 + spawnBoost * 0.3);
       if (this.rng.nextFloat() < eliteChance * dt) {
         const elite = this.rng.pick(DATA.enemies.elite);
         this.spawnEnemy(elite);
@@ -2247,12 +2685,38 @@
       ctx.fillStyle = this.biome.color;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.save();
-      ctx.globalAlpha = 0.1;
-      for (let i = 0; i < 40; i++) {
-        const emoji = this.biome.bgEmoji[i % this.biome.bgEmoji.length];
-        ctx.font = '32px serif';
-        ctx.fillText(emoji, (i * 53) % canvas.width, ((i * 37) % canvas.height));
-      }
+      this.backgroundDetails.forEach(detail => {
+        ctx.save();
+        ctx.globalAlpha = detail.alpha;
+        ctx.fillStyle = detail.color;
+        ctx.translate(detail.x, detail.y);
+        ctx.rotate(detail.rotation);
+        if (detail.type === 'ellipse') {
+          ctx.beginPath();
+          ctx.ellipse(0, 0, detail.w * 0.5, detail.h * 0.35, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(0, -detail.h / 2);
+          ctx.lineTo(detail.w / 2, 0);
+          ctx.lineTo(0, detail.h / 2);
+          ctx.lineTo(-detail.w / 2, 0);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+      });
+      ctx.restore();
+      ctx.save();
+      this.backgroundLayers.forEach(layer => {
+        ctx.save();
+        ctx.globalAlpha = layer.alpha;
+        ctx.translate(layer.x, layer.y);
+        ctx.rotate(layer.rotation);
+        ctx.font = `${layer.size}px serif`;
+        ctx.fillText(layer.emoji, 0, 0);
+        ctx.restore();
+      });
       ctx.restore();
     }
     render() {
@@ -2268,7 +2732,17 @@
         }
       }
       this.projectiles.forEach(p => {
-        ctx.fillText(p.emoji, p.x, p.y);
+        if (!p.active) return;
+        if (p.render) {
+          p.render(ctx, p, this);
+        } else if (p.emoji) {
+          ctx.fillText(p.emoji, p.x, p.y);
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.6)';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
       });
       this.xpOrbs.forEach(o => ctx.fillText(o.emoji, o.x, o.y));
       this.loots.forEach(l => ctx.fillText(l.emoji, l.x, l.y));
@@ -2321,6 +2795,9 @@
 
   window.addEventListener('resize', () => {
     resizeCanvas();
+    if (game && game.biome) {
+      game.generateBackground();
+    }
   });
 
   showToast('Choisissez votre chèvre préférée !');
