@@ -2577,12 +2577,15 @@
     }
     castChomp(stats, state) {
       state.cooldown = stats.cooldown;
+      const baseRadius = stats.radius;
       this.spawnProjectile({
         x: this.player.x,
         y: this.player.y,
         vx: 0,
         vy: 0,
-        radius: stats.radius,
+        radius: baseRadius,
+        baseRadius,
+        pulse: this.rng.nextFloat() * Math.PI * 2,
         damage: stats.damage,
         life: 0.3,
         owner: 'player',
@@ -2610,7 +2613,7 @@
           p.x = this.player.x;
           p.y = this.player.y;
           const pulse = 1 + Math.sin((this.elapsed + p.pulse) * 5) * 0.08;
-          p.radius = stats.radius * pulse;
+          p.radius = (p.baseRadius || baseRadius) * pulse;
         }
       });
       if (state.evolution) {
